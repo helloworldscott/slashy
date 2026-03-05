@@ -267,7 +267,7 @@ class Game {
     t.interact = 'key';
     t.deco = 'key';
     this.emitNoise(this.keySpawnPos.x, this.keySpawnPos.y, 6, 'A key ring clatters across the block!');
-    this.pushLog('The gate is locked. Find the key!');
+    this.pushLog("It's locked. You need a key!");
   }
 
   moveEntity(ent, tx, ty, maxStep, done){
@@ -291,8 +291,13 @@ class Game {
     const t=this.map.get(this.player.x,this.player.y);
     if (t.exit) {
       this.ap-=1;
-      if (!this.hasExitKey) {
+      if (!this.keySpawned) {
         this.spawnExitKey();
+        this.afterPlayerAction();
+        return;
+      }
+      if (!this.hasExitKey) {
+        this.pushLog("It's locked. You need a key!");
         this.afterPlayerAction();
         return;
       }
@@ -514,7 +519,16 @@ class Game {
   }
 
   restart(){ this.reset(); this.showOnly('startScreen'); }
-  win(){ this.state='win'; this.showOnly('winScreen'); this.pushLog('You escaped alive.'); }
+  win(){
+    if (!this.hasExitKey) {
+      if (!this.keySpawned) this.spawnExitKey();
+      this.pushLog("It's locked. You need a key!");
+      return;
+    }
+    this.state='win';
+    this.showOnly('winScreen');
+    this.pushLog('You escaped alive.');
+  }
   lose(){ this.state='lose'; this.showOnly('loseScreen'); this.pushLog('You were caught.'); }
 
   playTone(freq=220,dur=0.06,type='sine'){
@@ -641,4 +655,5 @@ class Game {
   }
 }
 
-new Game();
+const game = new Game();
+window.__game = game;
