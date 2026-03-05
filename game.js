@@ -74,7 +74,7 @@ class Game {
     this.sound = { muted: false, ctx: null };
     this.centerOn(this.player.x, this.player.y, true);
     this.setReachable();
-    this.pushLog('Stay quiet. Use alarms/vaults as misdirection and reach the gate.');
+    this.pushLog('Stay quiet, but keep moving: the killer relentlessly tracks you.');
     this.updateHUD();
   }
 
@@ -277,7 +277,12 @@ class Game {
     this.afterPlayerAction();
   }
 
-  afterPlayerAction(){ this.setReachable(); this.updateHUD(); if(this.ap<=0) this.tryEndTurn(); }
+  afterPlayerAction(){
+    this.killer.lastSeen = { x: this.player.x, y: this.player.y };
+    this.setReachable();
+    this.updateHUD();
+    if(this.ap<=0) this.tryEndTurn();
+  }
 
   tryEndTurn(){
     if (this.state!=='playing' || this.turn!=='player' || this.turnBusy) return;
@@ -288,54 +293,30 @@ class Game {
 
   killerTurn(){
     if (this.state!=='playing') return;
-    const seesAtStart = this.canDetectPlayer(true);
-    const pressureState = seesAtStart || this.killer.state==='CHASE' || this.killer.heard;
-    this.killer.ap = pressureState ? 3 : 2;
+    this.killer.state='CHASE';
+    this.killer.ap = 3;
     const act = () => {
       if (this.killer.ap<=0 || this.state!=='playing') return this.endKillerTurn();
-      if (this.isAdjacent(this.killer,this.player) && this.canDetectPlayer()) {
+
+      if (this.isAdjacent(this.killer,this.player)) {
         this.killerAttack();
         this.killer.ap-=1;
-        return setTimeout(act, 300);
+        return setTimeout(act, 280);
       }
 
-      const sees = this.canDetectPlayer(true);
-      if (sees) {
-        this.killer.state='CHASE';
-        this.killer.lastSeen={x:this.player.x,y:this.player.y};
-        this.killer.suspicion=4;
-        if (!this.firstSighting) this.triggerSting();
-      } else if (this.killer.state==='CHASE' && this.killer.lastSeen) {
-        this.killer.state='SEARCH';
-        this.killer.suspicion=Math.max(this.killer.suspicion, 4);
-      }
-
-      if (this.killer.heard) this.killer.state='INVESTIGATE';
-      let target = null;
-      if (this.killer.state==='CHASE' && this.killer.lastSeen) target=this.killer.lastSeen;
-      if (this.killer.state==='INVESTIGATE' && this.killer.heard) target=this.killer.heard;
-      if (this.killer.state==='SEARCH' && this.killer.suspicion>0) {
-        const hides = this.findNearbyHide(this.killer.x,this.killer.y,5);
-        target = hides[0] || this.killer.lastSeen;
-      }
-      if (!target) {
-        this.killer.state='PATROL';
-        const route=[[10,3],[12,6],[9,8],[6,10],[3,12],[5,8],[8,5],[11,2],[13,6]];
-        target=route[this.killer.patrolIndex%route.length];
-        if (this.killer.x===target[0] && this.killer.y===target[1]) this.killer.patrolIndex++;
-        target={x:target[0],y:target[1]};
-      }
+      // Relentless pressure: the killer always tracks your latest position.
+      this.killer.lastSeen={x:this.player.x,y:this.player.y};
+      if (!this.firstSighting && this.canDetectPlayer(true)) this.triggerSting();
 
       if (this.player.hidden && this.isAdjacent(this.killer,this.player)) {
         this.killer.ap-=1;
         this.player.hidden=false;
-        this.pushLog('Killer tears open your hiding spot!');
+        this.pushLog('Killer rips open your hiding spot!');
         this.playTone(70,0.08,'square');
-        return setTimeout(act,280);
+        return setTimeout(act,260);
       }
 
-      const chaseStep = (this.killer.state==='CHASE' || this.killer.state==='INVESTIGATE') ? 2 : 1;
-      const path = this.shortestPath(this.killer.x,this.killer.y,target.x,target.y,chaseStep,false);
+      const path = this.shortestPath(this.killer.x,this.killer.y,this.killer.lastSeen.x,this.killer.lastSeen.y,2,false);
       if (path.length) {
         const [nx,ny]=path[path.length-1];
         this.killer.x=nx; this.killer.y=ny; this.killer.ap-=1;
@@ -343,9 +324,7 @@ class Game {
       } else {
         this.killer.ap=0;
       }
-      if (this.killer.state==='INVESTIGATE' && this.killer.x===target.x && this.killer.y===target.y) this.killer.heard=null;
-      if (this.killer.state==='SEARCH') this.killer.suspicion--;
-      setTimeout(act,260);
+      setTimeout(act,240);
     };
     act();
   }
