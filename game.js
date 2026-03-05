@@ -208,31 +208,27 @@ class Game {
   moveRange(){ return this.player.injured ? 2 : 3; }
 
   neighbors(x,y){ return [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([a,b])=>this.map.inBounds(a,b)); }
-  nextStepTowardPlayer(){
-    const startKey = `${this.player.x},${this.player.y}`;
-    const dist = new Map([[startKey, 0]]);
-    const q = [[this.player.x, this.player.y]];
+  chooseKillerStep(){
+    const chaseTargets = this.neighbors(this.player.x, this.player.y)
+      .filter(([x, y]) => this.passable(x, y, false));
 
-    while (q.length) {
-      const [x, y] = q.shift();
-      const base = dist.get(`${x},${y}`);
-      for (const [nx, ny] of this.neighbors(x, y)) {
-        const key = `${nx},${ny}`;
-        if (dist.has(key)) continue;
-        const isKillerTile = nx===this.killer.x && ny===this.killer.y;
-        if (!isKillerTile && !this.passable(nx, ny, false)) continue;
-        dist.set(key, base + 1);
-        q.push([nx, ny]);
-      }
+    let bestPath = null;
+    for (const [tx, ty] of chaseTargets) {
+      const path = this.shortestPath(this.killer.x, this.killer.y, tx, ty, 99, true);
+      if (!path.length) continue;
+      if (!bestPath || path.length < bestPath.length) bestPath = path;
     }
 
-    const options = this.neighbors(this.killer.x, this.killer.y)
-      .filter(([x, y]) => this.passable(x, y, false))
-      .map(([x, y]) => ({ x, y, score: dist.get(`${x},${y}`) ?? Infinity, m: Math.abs(x-this.player.x)+Math.abs(y-this.player.y) }))
-      .sort((a, b) => (a.score - b.score) || (a.m - b.m));
+    if (bestPath && bestPath.length) {
+      const [sx, sy] = bestPath[0];
+      return { x: sx, y: sy };
+    }
 
-    if (options.length && options[0].score < Infinity) return options[0];
-    const fallback = options.sort((a,b)=>a.m-b.m)[0];
+    const fallback = this.neighbors(this.killer.x, this.killer.y)
+      .filter(([x, y]) => this.passable(x, y, false))
+      .map(([x, y]) => ({ x, y, m: Math.abs(x-this.player.x)+Math.abs(y-this.player.y) }))
+      .sort((a, b) => a.m - b.m)[0];
+
     return fallback || null;
   }
   passable(x,y,ignoreKiller=false){
@@ -335,17 +331,11 @@ class Game {
       this.killer.lastSeen={x:this.player.x,y:this.player.y};
       if (!this.firstSighting && this.canDetectPlayer(true)) this.triggerSting();
 
-      if (this.player.hidden && this.isAdjacent(this.killer,this.player)) {
-        this.killer.ap-=1;
-        this.player.hidden=false;
-        this.pushLog('Killer rips open your hiding spot!');
-        this.playTone(70,0.08,'square');
-        return setTimeout(act,260);
-      }
-
-      const step = this.nextStepTowardPlayer();
+      const step = this.chooseKillerStep();
       if (step) {
-        this.killer.x=step.x; this.killer.y=step.y; this.killer.ap-=1;
+        this.killer.x=step.x;
+        this.killer.y=step.y;
+        this.killer.ap-=1;
         this.playTone(85,0.03,'triangle');
       } else {
         this.killer.ap=0;
