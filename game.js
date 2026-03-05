@@ -74,7 +74,7 @@ class Game {
     this.sound = { muted: false, ctx: null };
     this.centerOn(this.player.x, this.player.y, true);
     this.setReachable();
-    this.pushLog('Stay quiet. Reach the gate.');
+    this.pushLog('Stay quiet. Use alarms/vaults as misdirection and reach the gate.');
     this.updateHUD();
   }
 
@@ -288,21 +288,26 @@ class Game {
 
   killerTurn(){
     if (this.state!=='playing') return;
-    this.killer.ap=2;
+    const seesAtStart = this.canDetectPlayer(true);
+    const pressureState = seesAtStart || this.killer.state==='CHASE' || this.killer.heard;
+    this.killer.ap = pressureState ? 3 : 2;
     const act = () => {
       if (this.killer.ap<=0 || this.state!=='playing') return this.endKillerTurn();
       if (this.isAdjacent(this.killer,this.player) && this.canDetectPlayer()) {
-        this.killerAttack(); this.killer.ap-=1; return setTimeout(act, 300);
+        this.killerAttack();
+        this.killer.ap-=1;
+        return setTimeout(act, 300);
       }
 
       const sees = this.canDetectPlayer(true);
       if (sees) {
         this.killer.state='CHASE';
         this.killer.lastSeen={x:this.player.x,y:this.player.y};
+        this.killer.suspicion=4;
         if (!this.firstSighting) this.triggerSting();
       } else if (this.killer.state==='CHASE' && this.killer.lastSeen) {
         this.killer.state='SEARCH';
-        this.killer.suspicion=3;
+        this.killer.suspicion=Math.max(this.killer.suspicion, 4);
       }
 
       if (this.killer.heard) this.killer.state='INVESTIGATE';
@@ -310,12 +315,12 @@ class Game {
       if (this.killer.state==='CHASE' && this.killer.lastSeen) target=this.killer.lastSeen;
       if (this.killer.state==='INVESTIGATE' && this.killer.heard) target=this.killer.heard;
       if (this.killer.state==='SEARCH' && this.killer.suspicion>0) {
-        const hides = this.findNearbyHide(this.killer.x,this.killer.y,4);
+        const hides = this.findNearbyHide(this.killer.x,this.killer.y,5);
         target = hides[0] || this.killer.lastSeen;
       }
       if (!target) {
         this.killer.state='PATROL';
-        const route=[[10,3],[12,6],[9,8],[6,10],[3,12],[5,8],[8,5]];
+        const route=[[10,3],[12,6],[9,8],[6,10],[3,12],[5,8],[8,5],[11,2],[13,6]];
         target=route[this.killer.patrolIndex%route.length];
         if (this.killer.x===target[0] && this.killer.y===target[1]) this.killer.patrolIndex++;
         target={x:target[0],y:target[1]};
@@ -324,14 +329,15 @@ class Game {
       if (this.player.hidden && this.isAdjacent(this.killer,this.player)) {
         this.killer.ap-=1;
         this.player.hidden=false;
-        this.pushLog('Killer checks nearby cover!');
+        this.pushLog('Killer tears open your hiding spot!');
         this.playTone(70,0.08,'square');
         return setTimeout(act,280);
       }
 
-      const path = this.shortestPath(this.killer.x,this.killer.y,target.x,target.y,1,false);
+      const chaseStep = (this.killer.state==='CHASE' || this.killer.state==='INVESTIGATE') ? 2 : 1;
+      const path = this.shortestPath(this.killer.x,this.killer.y,target.x,target.y,chaseStep,false);
       if (path.length) {
-        const [nx,ny]=path[0];
+        const [nx,ny]=path[path.length-1];
         this.killer.x=nx; this.killer.y=ny; this.killer.ap-=1;
         this.playTone(85,0.03,'triangle');
       } else {
@@ -339,7 +345,7 @@ class Game {
       }
       if (this.killer.state==='INVESTIGATE' && this.killer.x===target.x && this.killer.y===target.y) this.killer.heard=null;
       if (this.killer.state==='SEARCH') this.killer.suspicion--;
-      setTimeout(act,280);
+      setTimeout(act,260);
     };
     act();
   }
@@ -356,7 +362,7 @@ class Game {
   canDetectPlayer(strict=false){
     const dist=Math.abs(this.killer.x-this.player.x)+Math.abs(this.killer.y-this.player.y);
     if (this.player.hidden && dist>1) return false;
-    const sight = strict ? 8 : 7;
+    const sight = strict ? 9 : 8;
     if (dist>sight) return false;
     return this.hasLOS(this.killer.x,this.killer.y,this.player.x,this.player.y);
   }
@@ -387,14 +393,35 @@ class Game {
     return out;
   }
 
+  findPanicEscapeTile(){
+    const options = this.neighbors(this.player.x, this.player.y)
+      .filter(([x,y]) => this.passable(x,y,false))
+      .map(([x,y]) => ({x, y, d: Math.abs(x-this.killer.x)+Math.abs(y-this.killer.y)}))
+      .filter(pos => pos.d >= 2)
+      .sort((a,b) => b.d - a.d);
+    return options[0] || null;
+  }
+
   isAdjacent(a,b){ return Math.abs(a.x-b.x)+Math.abs(a.y-b.y)===1; }
 
   killerAttack(){
+    const roll = 1 + Math.floor(Math.random() * 6);
+    const escapeTile = this.findPanicEscapeTile();
+    if (roll >= 5 && escapeTile) {
+      this.player.x = escapeTile.x;
+      this.player.y = escapeTile.y;
+      this.player.hidden = false;
+      this.shake = 6;
+      this.pushLog(`Panic Roll ${roll}: You slip away from the blade!`);
+      this.playTone(280,0.08,'triangle');
+      return;
+    }
+
     this.shake = 12;
     this.hp -= 1;
     this.player.hidden = false;
+    this.pushLog(`Panic Roll ${roll}: The knife finds you.`);
     if (this.hp===1 && !this.player.injured) { this.player.injured=true; this.pushLog('Injured! Movement reduced.'); }
-    this.pushLog('The knife strikes!');
     this.playTone(55,0.13,'sawtooth');
     if (this.hp<=0) this.lose();
   }
