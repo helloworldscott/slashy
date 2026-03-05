@@ -72,13 +72,16 @@ button:hover { background: #1a2c4e; }
 #overlay {
   position: absolute;
   inset: 0;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   background: rgba(2, 4, 10, 0.55);
   pointer-events: none;
 }
-#overlay.show { pointer-events: auto; }
+#overlay.show {
+  display: flex;
+  pointer-events: auto;
+}
 
 .overlay-card {
   background: rgba(8, 11, 20, 0.96);
