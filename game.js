@@ -316,9 +316,17 @@ class Game {
         return setTimeout(act,260);
       }
 
-      const path = this.shortestPath(this.killer.x,this.killer.y,this.killer.lastSeen.x,this.killer.lastSeen.y,2,false);
-      if (path.length) {
-        const [nx,ny]=path[path.length-1];
+      const chaseTargets = this.neighbors(this.player.x, this.player.y)
+        .filter(([x, y]) => this.passable(x, y, false));
+      let bestPath = [];
+      for (const [tx, ty] of chaseTargets) {
+        const p = this.shortestPath(this.killer.x, this.killer.y, tx, ty, 2, false);
+        if (!p.length) continue;
+        if (!bestPath.length || p.length < bestPath.length) bestPath = p;
+      }
+
+      if (bestPath.length) {
+        const [nx,ny]=bestPath[bestPath.length-1];
         this.killer.x=nx; this.killer.y=ny; this.killer.ap-=1;
         this.playTone(85,0.03,'triangle');
       } else {
