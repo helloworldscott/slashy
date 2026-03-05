@@ -208,6 +208,33 @@ class Game {
   moveRange(){ return this.player.injured ? 2 : 3; }
 
   neighbors(x,y){ return [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([a,b])=>this.map.inBounds(a,b)); }
+  nextStepTowardPlayer(){
+    const startKey = `${this.player.x},${this.player.y}`;
+    const dist = new Map([[startKey, 0]]);
+    const q = [[this.player.x, this.player.y]];
+
+    while (q.length) {
+      const [x, y] = q.shift();
+      const base = dist.get(`${x},${y}`);
+      for (const [nx, ny] of this.neighbors(x, y)) {
+        const key = `${nx},${ny}`;
+        if (dist.has(key)) continue;
+        const isKillerTile = nx===this.killer.x && ny===this.killer.y;
+        if (!isKillerTile && !this.passable(nx, ny, false)) continue;
+        dist.set(key, base + 1);
+        q.push([nx, ny]);
+      }
+    }
+
+    const options = this.neighbors(this.killer.x, this.killer.y)
+      .filter(([x, y]) => this.passable(x, y, false))
+      .map(([x, y]) => ({ x, y, score: dist.get(`${x},${y}`) ?? Infinity, m: Math.abs(x-this.player.x)+Math.abs(y-this.player.y) }))
+      .sort((a, b) => (a.score - b.score) || (a.m - b.m));
+
+    if (options.length && options[0].score < Infinity) return options[0];
+    const fallback = options.sort((a,b)=>a.m-b.m)[0];
+    return fallback || null;
+  }
   passable(x,y,ignoreKiller=false){
     const t=this.map.get(x,y); if(!t || t.blocked) return false;
     if (!ignoreKiller && x===this.killer.x && y===this.killer.y) return false;
@@ -316,18 +343,9 @@ class Game {
         return setTimeout(act,260);
       }
 
-      const chaseTargets = this.neighbors(this.player.x, this.player.y)
-        .filter(([x, y]) => this.passable(x, y, false));
-      let bestPath = [];
-      for (const [tx, ty] of chaseTargets) {
-        const p = this.shortestPath(this.killer.x, this.killer.y, tx, ty, 2, false);
-        if (!p.length) continue;
-        if (!bestPath.length || p.length < bestPath.length) bestPath = p;
-      }
-
-      if (bestPath.length) {
-        const [nx,ny]=bestPath[bestPath.length-1];
-        this.killer.x=nx; this.killer.y=ny; this.killer.ap-=1;
+      const step = this.nextStepTowardPlayer();
+      if (step) {
+        this.killer.x=step.x; this.killer.y=step.y; this.killer.ap-=1;
         this.playTone(85,0.03,'triangle');
       } else {
         this.killer.ap=0;
