@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Night Slip: Isometric Slasher Escape</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="game-wrap">
+    <canvas id="game" width="1280" height="720"></canvas>
+
+    <div id="hud">
+      <div class="panel top-left">
+        <h1>Night Slip</h1>
+        <div id="turnInfo">Turn: Player</div>
+        <div id="apInfo">AP: 2/2</div>
+        <div id="hpInfo">Health: ❤❤</div>
+        <div id="objective">Objective: Find the key, then return to the gate and escape with Interact (E).</div>
+      </div>
+
+      <div class="panel top-right">
+        <button id="startBtn">Start</button>
+        <button id="restartBtn">Restart</button>
+        <button id="centerBtn">Center</button>
+        <button id="muteBtn">Mute: Off</button>
+        <button id="endTurnBtn">End Turn (Space)</button>
+      </div>
+
+      <div class="panel bottom-left" id="logPanel">
+        <h2>Log</h2>
+        <ul id="logList"></ul>
+      </div>
+
+      <div class="panel bottom-right" id="actionPanel">
+        <h2>Actions</h2>
+        <div class="actions-grid">
+          <button id="interactBtn">Interact (E)</button>
+          <button id="hideBtn">Hide (H)</button>
+          <button id="sprintBtn">Sprint (Shift)</button>
+          <button id="helpBtn">Help</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="overlay" class="show">
+      <div class="overlay-card" id="startScreen">
+        <h2>Night Slip</h2>
+        <p>Turn-based isometric slasher escape.</p>
+        <ul>
+          <li>Click reachable blue tiles to move.</li>
+          <li>Yellow tiles are interactables (Exit, Vault, Alarm).</li>
+          <li>Red tiles show killer threat and danger pressure.</li>
+          <li>Use <b>E</b> Interact, <b>H</b> Hide, <b>Shift</b> Sprint, <b>Space</b> End Turn.</li>
+          <li>When the killer is beside you, a panic die roll can let you break away.</li>
+          <li>Press <b>T</b> to toggle autoplay tester.</li>
+        </ul>
+        <button id="beginRunBtn">Begin Run</button>
+      </div>
+
+      <div class="overlay-card hidden" id="helpScreen">
+        <h2>How to Play</h2>
+        <p>You have 2 AP per turn. Move costs 1 AP, Sprint costs 2 AP (+noise), Hide costs 1 AP, Interact costs 1 AP.</p>
+        <p>After first hit, you are injured and move range is reduced by 1 tile.</p>
+        <p>The killer relentlessly chases your latest position every turn, so your main survival is the panic-roll breakaway and smart routing.</p>
+        <p>This is a tense route puzzle: use vaults/alarms/hide spots to create openings for your run to the gate.</p>
+        <p><b>Panic Roll:</b> if the killer swings in melee, a 5-6 roll lets you slip to a nearby tile instead of taking damage.</p>
+        <p><b>Gate Rule:</b> your first escape attempt reveals you need a key. The key appears far away—grab it, then return to the gate.</p>
+        <button id="closeHelpBtn">Close</button>
+      </div>
+
+      <div class="overlay-card hidden" id="winScreen">
+        <h2>You Escaped!</h2>
+        <p>The gate slams shut behind you.</p>
+        <button class="replayBtn">Play Again</button>
+      </div>
+
+      <div class="overlay-card hidden" id="loseScreen">
+        <h2>You Were Caught</h2>
+        <p>The street goes silent.</p>
+        <button class="replayBtn">Try Again</button>
+      </div>
+
+      <div class="overlay-card hidden" id="stingScreen">
+        <h2>He Sees You.</h2>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
