@@ -37,6 +37,7 @@ class Game {
     this.playerStart = { x: 2, y: 12 };
     this.killerStart = { x: 10, y: 3 };
     this.exitPos = { x: 13, y: 1 };
+    this.keySpawnPos = { x: 14, y: 13 };
     this.reset();
     this.bindUI();
     this.resize();
@@ -61,6 +62,8 @@ class Game {
     this.player = { ...this.playerStart, hidden: false, injured: false, selected: true, anim: null };
     this.killer = { ...this.killerStart, state: 'PATROL', ap: 2, patrolIndex: 0, lastSeen: null, heard: null, suspicion: 0, anim: null };
     this.noisePings = [];
+    this.hasExitKey = false;
+    this.keySpawned = false;
     this.log = [];
     this.hover = null;
     this.reachable = new Set();
@@ -74,7 +77,7 @@ class Game {
     this.sound = { muted: false, ctx: null };
     this.centerOn(this.player.x, this.player.y, true);
     this.setReachable();
-    this.pushLog('Stay quiet, but keep moving: the killer relentlessly tracks you.');
+    this.pushLog('Find a way out. The gate may need more than courage.');
     this.updateHUD();
   }
 
@@ -256,6 +259,17 @@ class Game {
     return out.slice(0,max);
   }
 
+  spawnExitKey(){
+    if (this.keySpawned) return;
+    const t = this.map.get(this.keySpawnPos.x, this.keySpawnPos.y);
+    if (!t || t.blocked) return;
+    this.keySpawned = true;
+    t.interact = 'key';
+    t.deco = 'key';
+    this.emitNoise(this.keySpawnPos.x, this.keySpawnPos.y, 6, 'A key ring clatters across the block!');
+    this.pushLog('The gate is locked. Find the key!');
+  }
+
   moveEntity(ent, tx, ty, maxStep, done){
     const path=this.shortestPath(ent.x,ent.y,tx,ty,maxStep);
     if (!path.length && !(ent.x===tx&&ent.y===ty)) return;
@@ -275,7 +289,26 @@ class Game {
   interact(){
     if (this.state!=='playing' || this.turn!=='player' || this.ap<1 || this.turnBusy) return;
     const t=this.map.get(this.player.x,this.player.y);
-    if (t.exit) { this.ap-=1; this.win(); return; }
+    if (t.exit) {
+      this.ap-=1;
+      if (!this.hasExitKey) {
+        this.spawnExitKey();
+        this.afterPlayerAction();
+        return;
+      }
+      this.win();
+      return;
+    }
+    if (t.interact==='key') {
+      this.ap-=1;
+      this.hasExitKey = true;
+      t.interact = null;
+      if (t.deco==='key') t.deco = null;
+      this.pushLog('You grab the gate key. Get back to the exit!');
+      this.playTone(520,0.07,'square');
+      this.afterPlayerAction();
+      return;
+    }
     if (t.interact==='alarm' && !t.used) {
       t.used=true; this.ap-=1; this.emitNoise(this.player.x,this.player.y,7,'You trigger an alarm!'); this.playTone(440,0.1,'sawtooth');
       this.afterPlayerAction(); return;
@@ -431,9 +464,10 @@ class Game {
   autoStep(){
     if (this.turn!=='player' || this.state!=='playing' || this.turnBusy) return;
     const here=this.map.get(this.player.x,this.player.y);
-    if (here.exit && this.ap>0) return this.interact();
+    if ((here.exit || here.interact==='key') && this.ap>0) return this.interact();
     if (this.ap===2 && this.map.get(this.player.x,this.player.y).hide && !this.player.hidden && Math.random()<0.15) return this.hideAction();
-    const p=this.shortestPath(this.player.x,this.player.y,this.exitPos.x,this.exitPos.y,99,true);
+    const target = (this.keySpawned && !this.hasExitKey) ? this.keySpawnPos : this.exitPos;
+    const p=this.shortestPath(this.player.x,this.player.y,target.x,target.y,99,true);
     if (p.length) {
       const step=p[Math.min(p.length-1, this.moveRange()-1)];
       this.moveEntity(this.player,step[0],step[1],this.moveRange(),()=>{ this.ap-=1; this.afterPlayerAction(); if(this.ap>0) setTimeout(()=>this.autoStep(),120);});
@@ -458,6 +492,10 @@ class Game {
     document.getElementById('turnInfo').textContent=`Turn: ${this.turn[0].toUpperCase()+this.turn.slice(1)}`;
     document.getElementById('apInfo').textContent=`AP: ${this.ap}/${this.maxAp}`;
     document.getElementById('hpInfo').textContent=`Health: ${'❤'.repeat(this.hp)}${'♡'.repeat(Math.max(0,2-this.hp))}`;
+    const obj = this.hasExitKey
+      ? 'Objective: Return to the gate and escape (E).'
+      : (this.keySpawned ? 'Objective: Reach the spawned key and Interact (E).' : 'Objective: Test the gate to reveal the lock, then get the key.');
+    document.getElementById('objective').textContent = obj;
   }
 
   showStart(){ this.showOnly('startScreen'); }
@@ -518,6 +556,7 @@ class Game {
     if (tile.hide) { ctx.fillStyle='#2b7a5e'; ctx.fillRect(tx-8,ty-18,16,12); }
     if (tile.deco==='lamp') { ctx.strokeStyle='#f9d98a'; ctx.beginPath(); ctx.moveTo(tx,ty-18); ctx.lineTo(tx,ty-34); ctx.stroke(); ctx.fillStyle='rgba(249,217,138,0.25)'; ctx.beginPath(); ctx.arc(tx,ty-34,11,0,Math.PI*2); ctx.fill(); }
     if (tile.deco==='gate') { ctx.fillStyle='#aab6ca'; ctx.fillRect(tx-14,ty-24,28,18); }
+    if (tile.deco==='key') { ctx.fillStyle='#ffd966'; ctx.beginPath(); ctx.arc(tx,ty-22,5,0,Math.PI*2); ctx.fill(); ctx.fillRect(tx+2,ty-23,10,3); }
     if (tile.lowWall) { ctx.fillStyle='#7f8798'; ctx.fillRect(tx-18,ty-8,36,6); }
   }
 
