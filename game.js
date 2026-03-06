@@ -212,6 +212,20 @@ class Game {
   moveRange(){ return this.player.injured ? 2 : 3; }
 
   neighbors(x,y){ return [[x+1,y],[x-1,y],[x,y+1],[x,y-1]].filter(([a,b])=>this.map.inBounds(a,b)); }
+  findClosestOpenTileTowardPlayer(){
+    let best = null;
+    for (let y=0; y<this.map.h; y++) {
+      for (let x=0; x<this.map.w; x++) {
+        if (!this.passable(x,y,false)) continue;
+        const p = this.shortestPath(this.killer.x, this.killer.y, x, y, 99, true);
+        if (!p.length && !(x===this.killer.x && y===this.killer.y)) continue;
+        const d = Math.abs(x-this.player.x) + Math.abs(y-this.player.y);
+        if (!best || d < best.d) best = {x,y,d};
+      }
+    }
+    return best;
+  }
+
   chooseKillerStep(){
     const chaseTargets = this.neighbors(this.player.x, this.player.y)
       .filter(([x, y]) => this.passable(x, y, false));
@@ -377,7 +391,17 @@ class Game {
         this.killer.ap-=1;
         this.playTone(85,0.03,'triangle');
       } else {
-        this.killer.ap=0;
+        // Hard guarantee: if pathing fails, snap toward nearest reachable tile near player.
+        const snap = this.findClosestOpenTileTowardPlayer();
+        if (snap && (snap.x !== this.killer.x || snap.y !== this.killer.y)) {
+          this.killer.x = snap.x;
+          this.killer.y = snap.y;
+          this.killer.ap -= 1;
+          this.pushLog('The killer cuts through side streets to close in.');
+          this.playTone(70,0.04,'square');
+        } else {
+          this.killer.ap=0;
+        }
       }
       setTimeout(act,240);
     };
@@ -447,7 +471,7 @@ class Game {
       this.player.hidden = false;
       this.shake = 6;
       this.pushLog(`Panic Roll ${roll}: You slip away from the blade!`);
-      this.showCombatBanner(`PANIC ROLL ${roll}: ESCAPE!`, true);
+      this.showCombatBanner(`PANIC ROLL ${roll} — ESCAPE!`, true);
       this.playTone(280,0.08,'triangle');
       return;
     }
@@ -456,7 +480,7 @@ class Game {
     this.hp -= 1;
     this.player.hidden = false;
     this.pushLog(`Panic Roll ${roll}: The knife finds you.`);
-    this.showCombatBanner(`PANIC ROLL ${roll}: HIT!`, true);
+    this.showCombatBanner(`PANIC ROLL ${roll} — HIT!`, true);
     if (this.hp===1 && !this.player.injured) { this.player.injured=true; this.pushLog('Injured! Movement reduced.'); }
     this.playTone(55,0.13,'sawtooth');
     if (this.hp<=0) this.lose();
@@ -502,11 +526,11 @@ class Game {
     const w = Math.min(canvas.width - 60, 660);
     const h = 78;
     const x = (canvas.width - w)/2;
-    const y = canvas.height*0.12;
+    const y = canvas.height*0.46 - h/2;
 
     ctx.save();
     ctx.globalAlpha = 0.9 * alpha;
-    ctx.fillStyle = 'rgba(45, 6, 10, 0.88)';
+    ctx.fillStyle = 'rgba(55, 8, 12, 0.94)';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = 'rgba(255,85,85,0.95)';
     ctx.lineWidth = 2;
@@ -514,13 +538,15 @@ class Game {
 
     ctx.globalAlpha = alpha;
     ctx.fillStyle = this.combatBanner.strong ? `rgba(255,110,110,${pulse})` : 'rgba(255,170,170,0.95)';
-    ctx.font = '700 30px Inter, Segoe UI, sans-serif';
+    ctx.shadowColor = 'rgba(255,0,0,0.45)';
+    ctx.shadowBlur = 20;
+    ctx.font = '800 42px Inter, Segoe UI, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(this.combatBanner.text, canvas.width/2, y + h/2);
     ctx.restore();
 
-    this.combatBanner.t -= this.combatBanner.strong ? 0.015 : 0.02;
+    this.combatBanner.t -= this.combatBanner.strong ? 0.009 : 0.014;
   }
 
   pushLog(text){
