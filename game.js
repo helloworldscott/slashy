@@ -106,7 +106,7 @@ class Game {
 
     map.get(2,9).interact = 'vault'; map.get(2,9).lowWall = true; map.get(2,9).vaultTo = {x:2,y:8};
     map.get(8,6).interact = 'vault'; map.get(8,6).lowWall = true; map.get(8,6).vaultTo = {x:7,y:6};
-    map.get(14,2).interact = 'alarm';
+    map.get(8,8).interact = 'alarm';
     map.get(4,10).interact = 'alarm';
     map.get(13,1).exit = true; map.get(13,1).interact = 'exit'; map.get(13,1).deco='gate';
 
@@ -171,7 +171,7 @@ class Game {
     if (!this.map.inBounds(g.x,g.y)) return;
     const key = `${g.x},${g.y}`;
     if (this.reachable.has(key)) {
-      const cost = this.sprintMode ? 2 : 1;
+      const cost = 2;
       const range = this.sprintMode ? this.moveRange()+2 : this.moveRange();
       this.moveEntity(this.player, g.x, g.y, range, () => {
         this.ap -= cost;
@@ -206,7 +206,7 @@ class Game {
   setReachable(){
     this.reachable = new Set();
     if (this.turn !== 'player' || this.ap <= 0) return;
-    const moveCost = this.sprintMode ? 2 : 1;
+    const moveCost = 2;
     if (this.ap < moveCost) return;
     const r = this.sprintMode ? this.moveRange()+2 : this.moveRange();
     const q=[[this.player.x,this.player.y,0]];
