@@ -70,6 +70,8 @@ class Game {
     this.path = [];
     this.sprintMode = false;
     this.extraKillerTurn = false;
+    this.alarmLureTurns = 0;
+    this.alarmTarget = null;
     this.turnBusy = false;
     this.autoPlay = false;
     this.firstSighting = false;
@@ -125,7 +127,7 @@ class Game {
     byId('endTurnBtn').onclick = () => this.tryEndTurn();
     byId('interactBtn').onclick = () => this.interact();
     byId('hideBtn').onclick = () => this.hideAction();
-    byId('sprintBtn').onclick = () => { this.sprintMode = !this.sprintMode; this.pushLog(`Sprint ${this.sprintMode ? 'armed' : 'off'}.`); };
+    byId('sprintBtn').onclick = () => this.toggleSprintMode();
     byId('helpBtn').onclick = () => this.showOnly('helpScreen');
     byId('closeHelpBtn').onclick = () => this.hideOverlay();
     byId('beginRunBtn').onclick = () => { this.hideOverlay(); this.state='playing'; };
@@ -156,6 +158,13 @@ class Game {
   }
 
   onMouseMove(e){ this.hover = this.worldMouse(e); }
+  toggleSprintMode(force=null){
+    this.sprintMode = (force===null) ? !this.sprintMode : !!force;
+    this.setReachable();
+    this.updateHUD();
+    this.pushLog(`Sprint ${this.sprintMode ? 'armed' : 'off'}.`);
+  }
+
   onClick(e){
     if (this.state!=='playing' || this.turn!=='player' || this.turnBusy) return;
     const g=this.worldMouse(e);
@@ -182,11 +191,11 @@ class Game {
 
   onKey(e){
     if (e.key === ' ') { e.preventDefault(); this.tryEndTurn(); }
-    if (e.key === 'Escape') this.sprintMode = false;
+    if (e.key === 'Escape') this.toggleSprintMode(false);
     if (e.key.toLowerCase()==='h') this.hideAction();
     if (e.key.toLowerCase()==='e') this.interact();
     if (e.key.toLowerCase()==='t') { this.autoPlay=!this.autoPlay; this.pushLog(`Autoplay ${this.autoPlay?'ON':'OFF'}.`); }
-    if (e.key==='Shift') this.sprintMode = !this.sprintMode;
+    if (e.key==='Shift') this.toggleSprintMode();
     const pan=24/this.camera.zoom;
     if (e.key==='ArrowUp' || e.key.toLowerCase()==='w') this.camera.targetY += pan;
     if (e.key==='ArrowDown' || e.key.toLowerCase()==='s') this.camera.targetY -= pan;
@@ -231,8 +240,8 @@ class Game {
     return best;
   }
 
-  chooseKillerStep(){
-    const chaseTargets = this.neighbors(this.player.x, this.player.y)
+  chooseKillerStep(targetX=this.player.x, targetY=this.player.y){
+    const chaseTargets = this.neighbors(targetX, targetY)
       .filter(([x, y]) => this.passable(x, y, false));
 
     let bestPath = null;
@@ -249,10 +258,18 @@ class Game {
 
     const fallback = this.neighbors(this.killer.x, this.killer.y)
       .filter(([x, y]) => this.passable(x, y, false))
-      .map(([x, y]) => ({ x, y, m: Math.abs(x-this.player.x)+Math.abs(y-this.player.y) }))
+      .map(([x, y]) => ({ x, y, m: Math.abs(x-targetX)+Math.abs(y-targetY) }))
       .sort((a, b) => a.m - b.m)[0];
 
     return fallback || null;
+  }
+
+  chooseStepAwayFromPlayer(){
+    const options = this.neighbors(this.killer.x, this.killer.y)
+      .filter(([x,y]) => this.passable(x,y,false))
+      .map(([x,y]) => ({x,y,d: Math.abs(x-this.player.x)+Math.abs(y-this.player.y)}))
+      .sort((a,b) => b.d - a.d);
+    return options[0] || null;
   }
   passable(x,y,ignoreKiller=false){
     const t=this.map.get(x,y); if(!t || t.blocked) return false;
@@ -335,7 +352,12 @@ class Game {
       return;
     }
     if (t.interact==='alarm' && !t.used) {
-      t.used=true; this.ap-=1; this.emitNoise(this.player.x,this.player.y,7,'You trigger an alarm!'); this.playTone(440,0.1,'sawtooth');
+      t.used=true;
+      this.ap-=1;
+      this.alarmLureTurns = 2;
+      this.alarmTarget = { x: this.player.x, y: this.player.y };
+      this.emitNoise(this.player.x,this.player.y,7,'You trigger an alarm! The killer is pulled off your trail.');
+      this.playTone(440,0.1,'sawtooth');
       this.afterPlayerAction(); return;
     }
     if (t.interact==='vault' && t.vaultTo) {
@@ -389,7 +411,15 @@ class Game {
       this.killer.lastSeen={x:this.player.x,y:this.player.y};
       if (!this.firstSighting && this.canDetectPlayer(true)) this.triggerSting();
 
-      const step = this.chooseKillerStep();
+      let step = null;
+      if (this.player.hidden) {
+        step = this.chooseStepAwayFromPlayer();
+      } else if (this.alarmLureTurns > 0 && this.alarmTarget) {
+        step = this.chooseKillerStep(this.alarmTarget.x, this.alarmTarget.y);
+      } else {
+        step = this.chooseKillerStep(this.player.x, this.player.y);
+      }
+
       if (step) {
         this.killer.x=step.x;
         this.killer.y=step.y;
@@ -414,6 +444,7 @@ class Game {
   }
 
   endKillerTurn(){
+    if (this.alarmLureTurns > 0) this.alarmLureTurns -= 1;
     if (this.extraKillerTurn && this.state==='playing') {
       this.extraKillerTurn = false;
       this.pushLog('Your sprint gives the killer another move!');
@@ -640,7 +671,7 @@ class Game {
   drawTile(x,y,tile){
     const p=this.gridToScreen(x,y,tile.height);
     const tx=p.x, ty=p.y;
-    const cols={street:'#2a3344',house:'#5b3f4a',fence:'#4d5a6b',hedge:'#2f5c43'};
+    const cols={street:'#2a3344',house:'#3e4b61',fence:'#4f5f76',hedge:'#2f5c43'};
     const c=cols[tile.type]||'#2a3344';
     const shade=tile.height?16:0;
 
@@ -681,6 +712,7 @@ class Game {
     if (tile.interact || tile.exit) this.drawOverlayDiamond(tx,ty,'rgba(255,219,115,0.22)');
     const threat = Math.abs(this.killer.x-x)+Math.abs(this.killer.y-y)<=2;
     if (threat) this.drawOverlayDiamond(tx,ty,'rgba(255,90,90,0.18)');
+    if (tile.blocked) this.drawOverlayDiamond(tx,ty,'rgba(130,140,170,0.20)');
 
     if (tile.hide) {
       ctx.fillStyle='#2b7a5e';
