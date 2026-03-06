@@ -69,6 +69,7 @@ class Game {
     this.reachable = new Set();
     this.path = [];
     this.sprintMode = false;
+    this.extraKillerTurn = false;
     this.turnBusy = false;
     this.autoPlay = false;
     this.firstSighting = false;
@@ -165,7 +166,11 @@ class Game {
       const range = this.sprintMode ? this.moveRange()+2 : this.moveRange();
       this.moveEntity(this.player, g.x, g.y, range, () => {
         this.ap -= cost;
-        if (this.sprintMode) this.emitNoise(g.x,g.y,4,'You sprint loudly.');
+        if (this.sprintMode) {
+          this.emitNoise(g.x,g.y,4,'You sprint loudly.');
+          this.extraKillerTurn = true;
+          this.pushLog('Sprint overextends you: killer gets an extra push.');
+        }
         this.sprintMode=false;
         this.afterPlayerAction();
       });
@@ -409,6 +414,11 @@ class Game {
   }
 
   endKillerTurn(){
+    if (this.extraKillerTurn && this.state==='playing') {
+      this.extraKillerTurn = false;
+      this.pushLog('Your sprint gives the killer another move!');
+      return setTimeout(()=>this.killerTurn(), 220);
+    }
     this.turn='player';
     this.ap=2;
     this.setReachable();
