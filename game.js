@@ -73,6 +73,7 @@ class Game {
     this.autoPlay = false;
     this.firstSighting = false;
     this.shake = 0;
+    this.combatBanner = { text: '', t: 0, strong: false };
     this.camera = { x: 0, y: 0, targetX: 0, targetY: 0, zoom: 1 };
     this.sound = { muted: false, ctx: null };
     this.centerOn(this.player.x, this.player.y, true);
@@ -446,6 +447,7 @@ class Game {
       this.player.hidden = false;
       this.shake = 6;
       this.pushLog(`Panic Roll ${roll}: You slip away from the blade!`);
+      this.showCombatBanner(`PANIC ROLL ${roll}: ESCAPE!`, true);
       this.playTone(280,0.08,'triangle');
       return;
     }
@@ -454,6 +456,7 @@ class Game {
     this.hp -= 1;
     this.player.hidden = false;
     this.pushLog(`Panic Roll ${roll}: The knife finds you.`);
+    this.showCombatBanner(`PANIC ROLL ${roll}: HIT!`, true);
     if (this.hp===1 && !this.player.injured) { this.player.injured=true; this.pushLog('Injured! Movement reduced.'); }
     this.playTone(55,0.13,'sawtooth');
     if (this.hp<=0) this.lose();
@@ -486,6 +489,40 @@ class Game {
     if (instant) { this.camera.x=this.camera.targetX; this.camera.y=this.camera.targetY; }
   }
 
+  showCombatBanner(text, strong=false){
+    this.combatBanner.text = text;
+    this.combatBanner.t = 1;
+    this.combatBanner.strong = strong;
+  }
+
+  drawCombatBanner(){
+    if (!this.combatBanner || this.combatBanner.t <= 0) return;
+    const alpha = Math.max(0, this.combatBanner.t);
+    const pulse = this.combatBanner.strong ? (0.8 + 0.2*Math.sin(performance.now()/80)) : 1;
+    const w = Math.min(canvas.width - 60, 660);
+    const h = 78;
+    const x = (canvas.width - w)/2;
+    const y = canvas.height*0.12;
+
+    ctx.save();
+    ctx.globalAlpha = 0.9 * alpha;
+    ctx.fillStyle = 'rgba(45, 6, 10, 0.88)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(255,85,85,0.95)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = this.combatBanner.strong ? `rgba(255,110,110,${pulse})` : 'rgba(255,170,170,0.95)';
+    ctx.font = '700 30px Inter, Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(this.combatBanner.text, canvas.width/2, y + h/2);
+    ctx.restore();
+
+    this.combatBanner.t -= this.combatBanner.strong ? 0.015 : 0.02;
+  }
+
   pushLog(text){
     this.log.unshift(text);
     this.log=this.log.slice(0,8);
@@ -497,10 +534,7 @@ class Game {
     document.getElementById('turnInfo').textContent=`Turn: ${this.turn[0].toUpperCase()+this.turn.slice(1)}`;
     document.getElementById('apInfo').textContent=`AP: ${this.ap}/${this.maxAp}`;
     document.getElementById('hpInfo').textContent=`Health: ${'❤'.repeat(this.hp)}${'♡'.repeat(Math.max(0,2-this.hp))}`;
-    const obj = this.hasExitKey
-      ? 'Objective: Return to the gate and escape (E).'
-      : (this.keySpawned ? 'Objective: Reach the spawned key and Interact (E).' : 'Objective: Test the gate to reveal the lock, then get the key.');
-    document.getElementById('objective').textContent = obj;
+    document.getElementById('objective').textContent = 'Objective: Escape through the gate (E).';
   }
 
   showStart(){ this.showOnly('startScreen'); }
@@ -761,6 +795,8 @@ class Game {
     this.drawHover();
 
     ctx.restore();
+
+    this.drawCombatBanner();
 
     if (this.autoPlay && this.turn==='player' && !this.turnBusy && this.state==='playing') this.autoStep();
     requestAnimationFrame(()=>this.loop());
