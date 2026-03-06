@@ -267,7 +267,7 @@ class Game {
     t.interact = 'key';
     t.deco = 'key';
     this.emitNoise(this.keySpawnPos.x, this.keySpawnPos.y, 6, 'A key ring clatters across the block!');
-    this.pushLog('The gate is locked. Find the key!');
+    this.pushLog("It's locked. You need a key!");
   }
 
   moveEntity(ent, tx, ty, maxStep, done){
@@ -291,8 +291,13 @@ class Game {
     const t=this.map.get(this.player.x,this.player.y);
     if (t.exit) {
       this.ap-=1;
-      if (!this.hasExitKey) {
+      if (!this.keySpawned) {
         this.spawnExitKey();
+        this.afterPlayerAction();
+        return;
+      }
+      if (!this.hasExitKey) {
+        this.pushLog("It's locked. You need a key!");
         this.afterPlayerAction();
         return;
       }
@@ -514,7 +519,16 @@ class Game {
   }
 
   restart(){ this.reset(); this.showOnly('startScreen'); }
-  win(){ this.state='win'; this.showOnly('winScreen'); this.pushLog('You escaped alive.'); }
+  win(){
+    if (!this.hasExitKey) {
+      if (!this.keySpawned) this.spawnExitKey();
+      this.pushLog("It's locked. You need a key!");
+      return;
+    }
+    this.state='win';
+    this.showOnly('winScreen');
+    this.pushLog('You escaped alive.');
+  }
   lose(){ this.state='lose'; this.showOnly('loseScreen'); this.pushLog('You were caught.'); }
 
   playTone(freq=220,dur=0.06,type='sine'){
@@ -531,12 +545,35 @@ class Game {
     o.start(t); o.stop(t+dur+0.01);
   }
 
+  drawBackdrop(){
+    const g = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    g.addColorStop(0, '#10182b');
+    g.addColorStop(0.55, '#0b1120');
+    g.addColorStop(1, '#070a12');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Distant fog band + vignette for mood.
+    const fog = ctx.createLinearGradient(0, canvas.height*0.35, 0, canvas.height*0.9);
+    fog.addColorStop(0, 'rgba(80,110,170,0.08)');
+    fog.addColorStop(1, 'rgba(12,18,32,0.02)');
+    ctx.fillStyle = fog;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const vignette = ctx.createRadialGradient(canvas.width*0.5, canvas.height*0.45, canvas.height*0.15, canvas.width*0.5, canvas.height*0.5, canvas.height*0.9);
+    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(0,0,0,0.42)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
   drawTile(x,y,tile){
     const p=this.gridToScreen(x,y,tile.height);
     const tx=p.x, ty=p.y;
     const cols={street:'#2a3344',house:'#5b3f4a',fence:'#4d5a6b',hedge:'#2f5c43'};
     const c=cols[tile.type]||'#2a3344';
     const shade=tile.height?16:0;
+
     ctx.beginPath();
     ctx.moveTo(tx, ty-this.tileH/2);
     ctx.lineTo(tx+this.tileW/2, ty);
@@ -545,7 +582,29 @@ class Game {
     ctx.closePath();
     ctx.fillStyle = this.tint(c,shade);
     ctx.fill();
-    ctx.strokeStyle='#1a2538'; ctx.stroke();
+    ctx.strokeStyle='#1a2538';
+    ctx.stroke();
+
+    // Side depth for elevated tiles.
+    if (tile.height) {
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.beginPath();
+      ctx.moveTo(tx, ty+this.tileH/2);
+      ctx.lineTo(tx+this.tileW/2, ty);
+      ctx.lineTo(tx+this.tileW/2, ty+14);
+      ctx.lineTo(tx, ty+this.tileH/2+14);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Subtle asphalt texture lines.
+    if (tile.type==='street') {
+      ctx.strokeStyle='rgba(255,255,255,0.04)';
+      ctx.beginPath();
+      ctx.moveTo(tx-16,ty-2);
+      ctx.lineTo(tx+12,ty+6);
+      ctx.stroke();
+    }
 
     const key=`${x},${y}`;
     if (this.reachable.has(key)) this.drawOverlayDiamond(tx,ty,'rgba(95,155,255,0.35)');
@@ -553,11 +612,51 @@ class Game {
     const threat = Math.abs(this.killer.x-x)+Math.abs(this.killer.y-y)<=2;
     if (threat) this.drawOverlayDiamond(tx,ty,'rgba(255,90,90,0.18)');
 
-    if (tile.hide) { ctx.fillStyle='#2b7a5e'; ctx.fillRect(tx-8,ty-18,16,12); }
-    if (tile.deco==='lamp') { ctx.strokeStyle='#f9d98a'; ctx.beginPath(); ctx.moveTo(tx,ty-18); ctx.lineTo(tx,ty-34); ctx.stroke(); ctx.fillStyle='rgba(249,217,138,0.25)'; ctx.beginPath(); ctx.arc(tx,ty-34,11,0,Math.PI*2); ctx.fill(); }
-    if (tile.deco==='gate') { ctx.fillStyle='#aab6ca'; ctx.fillRect(tx-14,ty-24,28,18); }
-    if (tile.deco==='key') { ctx.fillStyle='#ffd966'; ctx.beginPath(); ctx.arc(tx,ty-22,5,0,Math.PI*2); ctx.fill(); ctx.fillRect(tx+2,ty-23,10,3); }
-    if (tile.lowWall) { ctx.fillStyle='#7f8798'; ctx.fillRect(tx-18,ty-8,36,6); }
+    if (tile.hide) {
+      ctx.fillStyle='#2b7a5e';
+      ctx.fillRect(tx-10,ty-20,20,14);
+      ctx.fillStyle='rgba(145,230,178,0.18)';
+      ctx.fillRect(tx-8,ty-22,16,4);
+    }
+
+    if (tile.deco==='lamp') {
+      ctx.strokeStyle='#f9d98a';
+      ctx.beginPath();
+      ctx.moveTo(tx,ty-18);
+      ctx.lineTo(tx,ty-36);
+      ctx.stroke();
+      const glow=ctx.createRadialGradient(tx,ty-36,2,tx,ty-36,26);
+      glow.addColorStop(0,'rgba(255,235,160,0.45)');
+      glow.addColorStop(1,'rgba(255,235,160,0.02)');
+      ctx.fillStyle=glow;
+      ctx.beginPath();
+      ctx.arc(tx,ty-36,26,0,Math.PI*2);
+      ctx.fill();
+    }
+
+    if (tile.deco==='gate') {
+      ctx.fillStyle='#aab6ca';
+      ctx.fillRect(tx-14,ty-24,28,18);
+      ctx.fillStyle='rgba(20,28,42,0.5)';
+      for (let i=-10;i<=10;i+=5) ctx.fillRect(tx+i,ty-24,2,18);
+    }
+
+    if (tile.deco==='key') {
+      ctx.fillStyle='#ffd966';
+      ctx.beginPath();
+      ctx.arc(tx,ty-22,5,0,Math.PI*2);
+      ctx.fill();
+      ctx.fillRect(tx+2,ty-23,10,3);
+      ctx.fillRect(tx+9,ty-26,2,2);
+      ctx.fillRect(tx+12,ty-26,2,2);
+    }
+
+    if (tile.lowWall) {
+      ctx.fillStyle='#7f8798';
+      ctx.fillRect(tx-18,ty-8,36,6);
+      ctx.fillStyle='rgba(255,255,255,0.18)';
+      ctx.fillRect(tx-18,ty-8,36,1);
+    }
   }
 
   drawOverlayDiamond(x,y,color){
@@ -582,15 +681,42 @@ class Game {
   drawEntity(ent,isPlayer){
     const t=this.map.get(ent.x,ent.y);
     const p=this.gridToScreen(ent.x,ent.y,t.height);
+
+    // Drop shadow
+    ctx.fillStyle='rgba(0,0,0,0.32)';
+    ctx.beginPath();
+    ctx.ellipse(p.x,p.y-8,12,6,0,0,Math.PI*2);
+    ctx.fill();
+
     if (isPlayer) {
       ctx.fillStyle=this.player.hidden?'#3a4d64':'#88d6ff';
       ctx.fillRect(p.x-8,p.y-34,16,22);
-      ctx.fillStyle='#dbe8ff'; ctx.fillRect(p.x-5,p.y-42,10,9);
+      ctx.fillStyle='#3d86bd';
+      ctx.fillRect(p.x-8,p.y-24,16,4);
+      ctx.fillStyle='#dbe8ff';
+      ctx.fillRect(p.x-5,p.y-42,10,9);
+      ctx.fillStyle='#1f2e44';
+      ctx.fillRect(p.x-3,p.y-39,2,2);
+      ctx.fillRect(p.x+1,p.y-39,2,2);
     } else {
-      ctx.fillStyle='#1f232b'; ctx.fillRect(p.x-10,p.y-40,20,28);
-      ctx.fillStyle='#f1f1f1'; ctx.beginPath(); ctx.ellipse(p.x,p.y-44,8,10,0,0,Math.PI*2); ctx.fill();
-      ctx.strokeStyle='#cc4444'; ctx.beginPath(); ctx.moveTo(p.x-4,p.y-46); ctx.lineTo(p.x+4,p.y-42); ctx.stroke();
-      ctx.fillStyle='#b8bdc8'; ctx.fillRect(p.x+8,p.y-30,14,3);
+      // Killer: coat + mask + knife silhouette
+      ctx.fillStyle='#1a1d24';
+      ctx.fillRect(p.x-11,p.y-40,22,30);
+      ctx.fillStyle='#11141a';
+      ctx.fillRect(p.x-14,p.y-17,28,8);
+      ctx.fillStyle='#f1f1f1';
+      ctx.beginPath();
+      ctx.ellipse(p.x,p.y-44,8,10,0,0,Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle='#cc4444';
+      ctx.beginPath();
+      ctx.moveTo(p.x-4,p.y-46);
+      ctx.lineTo(p.x+4,p.y-42);
+      ctx.stroke();
+      ctx.fillStyle='#b8bdc8';
+      ctx.fillRect(p.x+8,p.y-30,15,3);
+      ctx.fillStyle='#9098a6';
+      ctx.fillRect(p.x+21,p.y-31,3,5);
     }
   }
 
@@ -613,7 +739,7 @@ class Game {
   }
 
   loop(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
+    this.drawBackdrop();
     this.camera.x += (this.camera.targetX-this.camera.x)*0.14;
     this.camera.y += (this.camera.targetY-this.camera.y)*0.14;
     if (this.shake>0) this.shake*=0.82;
@@ -641,4 +767,5 @@ class Game {
   }
 }
 
-new Game();
+const game = new Game();
+window.__game = game;
